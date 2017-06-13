@@ -26,8 +26,12 @@ def build_model():
 
     hidden_n = 28
 
+    forget_bias = 1.
+    initial_bias = numpy.zeros([4 * hidden_n], dtype=numpy.float32)
+    initial_bias[1 * hidden_n: 2 * hidden_n] += forget_bias
+
     lstm_w = tf.Variable(tf.truncated_normal(shape=[INPUT_N + hidden_n, hidden_n * 4]), name='lstm_weights')
-    lstm_b = tf.Variable(tf.truncated_normal(shape=[4 * hidden_n]), name='lstm_bias')
+    lstm_b = tf.Variable(initial_value=initial_bias, name='lstm_bias')
 
     fc_w = tf.Variable(tf.truncated_normal(shape=[hidden_n, CLASS_N]), name='fc_weights')
     fc_b = tf.Variable(tf.zeros(shape=[CLASS_N]), name='fc_bias')
