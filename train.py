@@ -1,3 +1,4 @@
+import contextlib
 import os
 import math
 
@@ -26,7 +27,8 @@ class Logger:
 
         self.handle = None
 
-        os.makedirs(save_dir)
+        with contextlib.suppress(FileExistsError):
+            os.makedirs(save_dir)
 
     def log(self, *args, **kwargs):
         print(datetime.datetime.now().time(), *args, **kwargs, flush=True)
@@ -39,21 +41,13 @@ class Logger:
         return self.handle
 
 
-def build_model():
-    x = tf.placeholder(tf.float32, [None, STEPS_N, INPUT_N])
-    y_true = tf.placeholder(tf.float32, [None, CLASS_N])
-
-    hidden_n = 28
-
+def lstm_layer(hidden_n, steps_n, input_n, x):
     forget_bias = 1.
     initial_bias = numpy.zeros([4 * hidden_n], dtype=numpy.float32)
     initial_bias[1 * hidden_n: 2 * hidden_n] += forget_bias
 
-    lstm_w = tf.Variable(tf.truncated_normal(shape=[INPUT_N + hidden_n, hidden_n * 4]), name='lstm_weights')
+    lstm_w = tf.Variable(tf.truncated_normal(shape=[input_n + hidden_n, hidden_n * 4]), name='lstm_weights')
     lstm_b = tf.Variable(initial_value=initial_bias, name='lstm_bias')
-
-    fc_w = tf.Variable(tf.truncated_normal(shape=[hidden_n, CLASS_N]), name='fc_weights')
-    fc_b = tf.Variable(tf.zeros(shape=[CLASS_N]), name='fc_bias')
 
     c_0 = tf.Variable(tf.zeros(shape=[1, hidden_n]), name='c_0')
     h_0 = tf.Variable(tf.zeros(shape=[1, hidden_n]), name='h_0')
@@ -61,7 +55,7 @@ def build_model():
     c = [tf.tile(c_0, [tf.shape(x)[0], 1])]
     h = [tf.tile(h_0, [tf.shape(x)[0], 1])]
 
-    for t in range(STEPS_N):
+    for t in range(steps_n):
         x_t = x[:, t, :]
         input_ = tf.concat([x_t, h[t]], axis=1)
 
@@ -74,7 +68,22 @@ def build_model():
         c.append(f * c[t] + i * g)
         h.append(o * tf.tanh(c[t + 1]))
 
-    signal = h[-1]
+    return {
+        "signal": h[-1],
+        "c": c,
+        "h": h
+    }
+
+
+def build_model():
+    x = tf.placeholder(tf.float32, [None, STEPS_N, INPUT_N])
+    y_true = tf.placeholder(tf.float32, [None, CLASS_N])
+
+    hidden_n = 28
+    signal = lstm_layer(hidden_n, STEPS_N, INPUT_N, x)['signal']
+
+    fc_w = tf.Variable(tf.truncated_normal(shape=[hidden_n, CLASS_N]), name='fc_weights')
+    fc_b = tf.Variable(tf.zeros(shape=[CLASS_N]), name='fc_bias')
     y_pred = tf.matmul(signal, fc_w) + fc_b
 
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=y_pred, labels=y_true))
