@@ -68,10 +68,12 @@ def lstm_layer(hidden_n, steps_n, input_n, x):
         c.append(f * c[t] + i * g)
         h.append(o * tf.tanh(c[t + 1]))
 
+    assert tuple(h[-1].get_shape().as_list()[1:]) == (hidden_n,)
+
     return {
         "signal": h[-1],
-        "c": c,
-        "h": h
+        "c": tf.transpose(tf.stack(c), perm=[1, 0, 2]),
+        "h": tf.transpose(tf.stack(h), perm=[1, 0, 2])
     }
 
 
@@ -80,11 +82,14 @@ def build_model():
     y_true = tf.placeholder(tf.float32, [None, CLASS_N])
 
     hidden_n = 28
-    signal = lstm_layer(hidden_n, STEPS_N, INPUT_N, x)['signal']
+    result = lstm_layer(hidden_n, STEPS_N, INPUT_N, x)
+    signal = lstm_layer(CLASS_N, STEPS_N, hidden_n, result['h'])['signal']
+    assert tuple(signal.get_shape().as_list()[1:]) == (10,)
+    y_pred = signal
 
-    fc_w = tf.Variable(tf.truncated_normal(shape=[hidden_n, CLASS_N]), name='fc_weights')
-    fc_b = tf.Variable(tf.zeros(shape=[CLASS_N]), name='fc_bias')
-    y_pred = tf.matmul(signal, fc_w) + fc_b
+    # fc_w = tf.Variable(tf.truncated_normal(shape=[hidden_n, CLASS_N]), name='fc_weights')
+    # fc_b = tf.Variable(tf.zeros(shape=[CLASS_N]), name='fc_bias')
+    # y_pred = tf.matmul(signal, fc_w) + fc_b
 
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=y_pred, labels=y_true))
     accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_true, axis=1), tf.argmax(y_pred, axis=1)), tf.float32))
