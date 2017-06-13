@@ -1,9 +1,12 @@
+import os
 import math
 
 import datetime
 import numpy
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
+
+LOG_DIR = "../lstm-data/logs/"
 
 MB_SIZE = 128
 STEPS_N = 28
@@ -16,8 +19,24 @@ TEST_INTERVAL = 10000
 TEST_N = 5000
 
 
-def datetime_log(*args, **kwargs):
-    print(datetime.datetime.now().time(), *args, **kwargs)
+class Logger:
+    def __init__(self, save_dir, prefix):
+        self.save_dir = save_dir
+        self.prefix = prefix
+
+        self.handle = None
+
+        os.makedirs(save_dir)
+
+    def log(self, *args, **kwargs):
+        print(datetime.datetime.now().time(), *args, **kwargs, flush=True)
+        print(datetime.datetime.now().time(), *args, **kwargs, file=self.handle, flush=True)
+
+    def open(self):
+        self.handle = open(os.path.join(self.save_dir, "{}-{}".format(
+            self.prefix,
+            datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S"))), "x")
+        return self.handle
 
 
 def build_model():
@@ -60,7 +79,7 @@ def build_model():
 
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=y_pred, labels=y_true))
     accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_true, axis=1), tf.argmax(y_pred, axis=1)), tf.float32))
-    step = tf.train.AdamOptimizer(1e-4).minimize(loss)
+    step = tf.train.AdamOptimizer().minimize(loss)
     return {
         "x": x,
         "y_pred": y_pred,
@@ -120,5 +139,11 @@ def train(log):
                 test(log, sess, model, mnist)
 
 
+def main():
+    logger = Logger(LOG_DIR, "train")
+    with logger.open():
+        train(logger.log)
+
+
 if __name__ == '__main__':
-    train(datetime_log)
+    main()
