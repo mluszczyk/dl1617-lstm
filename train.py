@@ -3,6 +3,8 @@ import os
 import math
 
 import datetime
+import random
+
 import numpy
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
@@ -18,6 +20,22 @@ REPORT_INTERVAL = 1000
 TEST_INTERVAL = 10000
 
 TEST_N = 5000
+
+
+def assert_tensor_shape(tensor: tf.Tensor, expected):
+    shape = tuple(tensor.get_shape().as_list())
+    _assert_shapes_equal(expected, shape)
+
+
+def assert_array_shape(array: numpy.array, expected):
+    _assert_shapes_equal(array.shape, expected)
+
+
+def _assert_shapes_equal(expected, shape):
+    error_message = "shapes do not match {} vs {}".format(shape, expected)
+    assert len(shape) == len(expected), error_message
+    for actual_val, expected_val in zip(shape, expected):
+        assert expected_val is not None or expected_val == actual_val, error_message
 
 
 class Logger:
@@ -68,7 +86,7 @@ def lstm_layer(hidden_n, steps_n, input_n, x):
         c.append(f * c[t] + i * g)
         h.append(o * tf.tanh(c[t + 1]))
 
-    assert tuple(h[-1].get_shape().as_list()[1:]) == (hidden_n,)
+    assert_tensor_shape(h[-1], [None, hidden_n])
 
     return {
         "signal": h[-1],
@@ -84,7 +102,7 @@ def build_model():
     hidden_n = 28
     result = lstm_layer(hidden_n, STEPS_N, INPUT_N, x)
     signal = lstm_layer(CLASS_N, STEPS_N, hidden_n, result['h'])['signal']
-    assert tuple(signal.get_shape().as_list()[1:]) == (10,)
+    assert_tensor_shape(signal, (None, 10))
     y_pred = signal
 
     # fc_w = tf.Variable(tf.truncated_normal(shape=[hidden_n, CLASS_N]), name='fc_weights')
@@ -123,6 +141,57 @@ def test(log, sess, model, mnist):
     log("test loss", numpy.average(losses), "accuracy", numpy.average(accuracies))
 
 
+def _cut_begin_end(orig, new):
+    assert orig >= new
+    diff = orig - new
+    begin = int(math.floor(diff / 2))
+    bottom_clip = int(math.ceil(diff / 2))
+    end = orig - bottom_clip
+    assert begin <= end
+    assert begin + 1 >= bottom_clip
+    assert begin + new + bottom_clip == orig
+    return begin, end
+
+
+def crop_image(x, w, h):
+    x = numpy.array(x)
+    assert len(x.shape) == 2
+    orig_w, orig_h = x.shape
+    assert orig_w >= w
+    assert orig_h >= h
+
+    cut_w = _cut_begin_end(orig_w, w)
+    cut_h = _cut_begin_end(orig_h, h)
+
+    return x[cut_w[0]:cut_w[1], cut_h[0]:cut_h[1]]
+
+
+def pad(array, to_length):
+    array = numpy.array(array)
+    assert len(array.shape) == 1
+    assert array.shape[0] <= to_length
+    return numpy.pad(array, (0, to_length - array.shape[0]), constant_values=0., mode='constant')
+
+
+def augment(batch_x: numpy.array):
+    num = batch_x.shape[0]
+    batch_x = batch_x.reshape((-1, 28, 28))
+    widths = [random.randint(24, 28) for _ in range(num)]
+    heights = [random.randint(24, 28) for _ in range(num)]
+
+    tab = []
+    for x, w, h in zip(batch_x, widths, heights):
+        item = crop_image(x, w, h)
+        item = item.reshape(-1)
+        item = pad(item, 28 * 28)
+        tab.append(item)
+
+    tab = numpy.array(tab)
+    assert_array_shape(tab, [None, 28 * 28])
+
+    return tab
+
+
 def train(log):
     mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
 
@@ -137,6 +206,8 @@ def train(log):
         for batch_idx in range(1000000):
             batch_x, batch_y = mnist.train.next_batch(MB_SIZE)
             batch_x = transform_batch(batch_x)
+            batch_x = augment(batch_x)
+            batch_x = batch_x.reshape((-1, 28, 28))
 
             output = sess.run([model['step'], model['loss'], model['accuracy']], feed_dict={
                 model['x']: batch_x,
@@ -147,7 +218,7 @@ def train(log):
 
             if (batch_idx + 1) % REPORT_INTERVAL == 0:
                 log("train loss", numpy.average(train_losses[-REPORT_INTERVAL:]),
-                      "accuracy", numpy.average(train_accuracies[-REPORT_INTERVAL:]))
+                    "accuracy", numpy.average(train_accuracies[-REPORT_INTERVAL:]))
 
             if (batch_idx + 1) % TEST_INTERVAL == 0:
                 test(log, sess, model, mnist)
