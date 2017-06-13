@@ -7,9 +7,13 @@ import random
 
 import numpy
 import tensorflow as tf
+from PIL import Image
 from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.python.training.saver import Saver
 
 LOG_DIR = "../lstm-data/logs/"
+CHECKPOINT_DIR = "../lstm-data/checkpoints/"
+CHECKPOINT_FILE_NAME = os.path.join(CHECKPOINT_DIR, "lstm")
 
 MB_SIZE = 128
 STEPS_N = 28
@@ -196,6 +200,7 @@ def train(log):
     mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
 
     model = build_model()
+    saver = Saver()
 
     train_losses = []
     train_accuracies = []
@@ -222,6 +227,32 @@ def train(log):
 
             if (batch_idx + 1) % TEST_INTERVAL == 0:
                 test(log, sess, model, mnist)
+                with contextlib.suppress(FileExistsError):
+                    os.makedirs(CHECKPOINT_DIR)
+                saver.save(sess, CHECKPOINT_FILE_NAME)
+
+
+def read_image(name):
+    image = Image.open(name)
+    return numpy.asarray(image)
+
+
+def predict(file_name):
+    model = build_model()
+    saver = Saver()
+
+    x = read_image(file_name)
+    x = x.reshape((1, 28, 28))
+    x = x.astype(numpy.float32) / 255.
+
+    with tf.Session() as sess:
+        saver.restore(sess, CHECKPOINT_FILE_NAME)
+
+        y_pred = sess.run([model['y_pred']], feed_dict={
+            model['x']: x
+        })
+
+        print(y_pred)
 
 
 def main():
