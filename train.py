@@ -206,8 +206,8 @@ def train(log):
         for batch_idx in range(1000000):
             batch_x, batch_y = mnist.train.next_batch(MB_SIZE)
             batch_x = transform_batch(batch_x)
-            batch_x = augment(batch_x)
-            batch_x = batch_x.reshape((-1, 28, 28))
+            # batch_x = augment(batch_x)
+            # batch_x = batch_x.reshape((-1, 28, 28))
 
             output = sess.run([model['step'], model['loss'], model['accuracy']], feed_dict={
                 model['x']: batch_x,
